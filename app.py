@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS — clean, professional, not "AI-generated" looking
+# Custom CSS — clean, professional
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -103,20 +103,25 @@ def sidebar():
         st.markdown("---")
 
         api_key = st.text_input(
-            "DeepSeek / OpenAI API Key (optional)",
+            "Gemini / DeepSeek / OpenAI API Key (optional)",
             type="password",
-            help="Leave empty to use retrieval-only mode. With a key, answers become more natural.",
-            value=os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", ""),
+            help="Leave empty for retrieval-only mode. With a key, answers become more natural. Supports Gemini, DeepSeek, or OpenAI.",
+            value=(
+                os.getenv("GEMINI_API_KEY", "")
+                or os.getenv("DEEPSEEK_API_KEY", "")
+                or os.getenv("OPENAI_API_KEY", "")
+            ),
         )
         base_url = st.selectbox(
             "LLM endpoint",
             options=[
+                "https://generativelanguage.googleapis.com/v1beta/openai/",  # Gemini
                 "https://api.deepseek.com",
                 "https://api.openai.com/v1",
             ],
             index=0,
         )
-        model_name = st.text_input("Model name", value="deepseek-chat")
+        model_name = st.text_input("Model name", value="gemini-2.0-flash")
 
         st.session_state.show_sources = st.checkbox("Show retrieved sources", value=False)
 
