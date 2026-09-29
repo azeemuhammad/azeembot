@@ -6,7 +6,7 @@ Follows the classic RAG pipeline:
   3. Index into FAISS vector store
   4. Retrieve similar documents via similarity search
   5. Build prompt with context + query
-  6. Generate final answer with LLM (DeepSeek / OpenAI-compatible)
+  6. Generate final answer with LLM (Gemini / DeepSeek / OpenAI-compatible)
 """
 
 import json
@@ -118,12 +118,14 @@ class AzeemRAG:
             normalize_embeddings=True,
         ).astype(np.float32)
         scores, indices = self.index.search(q_emb, fetch_k)
+
         results = []
         q_lower = query.lower()
         identity_q = any(k in q_lower for k in (
             "who are you", "about yourself", "introduce", "elevator",
             "who is daniyal", "who is muhammad", "background",
         ))
+
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or score < SIMILARITY_THRESHOLD:
                 continue
@@ -139,6 +141,7 @@ class AzeemRAG:
                 s += 0.08
             doc["score"] = s
             results.append(doc)
+
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
@@ -191,30 +194,33 @@ class AzeemRAG:
 === KNOWLEDGE CONTEXT ===
 {context}
 === END CONTEXT ===
-
 """
         if history_text:
             prompt += f"Recent conversation:\n{history_text}\n\n"
-
         prompt += f"Current question: {query}\n\nAzeemBot:"
         return prompt
 
     # ------------------------------------------------------------------
-    # 6. LLM generation (DeepSeek / any OpenAI-compatible endpoint)
+    # 6. LLM generation (Gemini / DeepSeek / any OpenAI-compatible endpoint)
     # ------------------------------------------------------------------
     def generate(
         self,
         query: str,
         history: Optional[List[Dict]] = None,
         api_key: Optional[str] = None,
-        base_url: str = "https://api.deepseek.com",
-        model: str = "deepseek-chat",
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/",
+        model: str = "gemini-2.0-flash",
     ) -> Tuple[str, List[Dict]]:
         retrieved = self.retrieve(query)
         prompt = self.build_prompt(query, retrieved, history)
 
-        # Prefer DeepSeek if key present; otherwise fall back to pure retrieval answer
-        key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+        # Prefer provided key, then GEMINI_API_KEY, then DeepSeek/OpenAI
+        key = (
+            api_key
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("DEEPSEEK_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
         if key:
             try:
                 from openai import OpenAI
@@ -263,12 +269,17 @@ class AzeemRAG:
         q = query.lower().strip()
 
         # Prefer profile / intro / elevator / about_me chunks for identity questions
-        identity_keywords = ("who are you", "tell me about yourself", "introduce yourself",
-                             "about you", "who is daniyal", "who is muhammad", "elevator",
-                             "short introduction", "background")
+        identity_keywords = (
+            "who are you", "tell me about yourself", "introduce yourself",
+            "about you", "who is daniyal", "who is muhammad", "elevator",
+            "short introduction", "background",
+        )
         if any(k in q for k in identity_keywords):
             for doc in retrieved:
-                if doc.get("id") in ("profile_intro", "elevator_pitch", "about_me", "qa_001", "qa_006", "qa_007", "qa_092"):
+                if doc.get("id") in (
+                    "profile_intro", "elevator_pitch", "about_me",
+                    "qa_001", "qa_006", "qa_007", "qa_092",
+                ):
                     return self._extract_answer(doc["text"])
             # also prefer any profile category
             for doc in retrieved:
