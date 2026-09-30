@@ -17,10 +17,6 @@ def main():
     print("  Memory + Gemini enabled")
     print("  Type 'quit' or 'exit' to leave")
     print("  Examples:")
-    print("    Store my DOB as 15/03/2003")
-    print("    Call me Boss")
-    print("    What is my date of birth?")
-    print("    Always answer in short points")
     print("=" * 55)
 
     api_key = (
