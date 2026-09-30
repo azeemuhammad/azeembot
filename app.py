@@ -273,43 +273,21 @@ def sidebar():
         )
         cfg = PROVIDER_OPTIONS[provider_label]
 
-        env_key = _env_api_key(cfg)
-
-        if env_key:
+        # API key: ONLY from environment / Streamlit secrets — never show input box
+        api_key = _env_api_key(cfg)
+        if api_key:
             st.markdown(
-                '<div class="key-ok">✓ API key loaded from environment / secrets '
-                "(not shown on screen)</div>',
+                '<div class="key-ok">✓ API key loaded securely '
+                "(hidden — not shown anywhere)</div>',
                 unsafe_allow_html=True,
             )
-            api_key = env_key
-            # Optional override — empty by default, never pre-filled with real key
-            with st.expander("Override API key (optional)", expanded=False):
-                override = st.text_input(
-                    cfg["key_label"],
-                    type="password",
-                    value="",  # NEVER pre-fill the real key
-                    placeholder="Paste a different key only if needed",
-                    help="Leave blank to keep the environment key. Key is never shown in chat.",
-                    key="api_key_override_input",
-                )
-                if override and override.strip():
-                    api_key = override.strip()
         else:
             st.markdown(
-                '<div class="key-missing">No key in environment. '
-                "Enter below (password field — hidden) or set "
-                "<code>GEMINI_API_KEY</code>.</div>",
+                '<div class="key-missing">No API key found. Set env variable:<br>'
+                '<code>export GEMINI_API_KEY=your_key</code><br>'
+                'or add it in <code>.streamlit/secrets.toml</code></div>',
                 unsafe_allow_html=True,
             )
-            api_key = st.text_input(
-                cfg["key_label"] + " (optional)",
-                type="password",
-                value="",  # NEVER pre-fill
-                placeholder="Paste key here — it will stay hidden",
-                help="Key stays in this password box only. It is never written to chat history.",
-                key="api_key_manual_input",
-            )
-            api_key = (api_key or "").strip()
 
         gemini_models = [
             "gemini-3.8-flash",
