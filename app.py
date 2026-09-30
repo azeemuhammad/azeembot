@@ -103,11 +103,6 @@ def init_session():
                 "content": (
                     "Hey! I'm **AzeemBot** — Daniyal's personal assistant.\n\n"
                     "Ask me anything about his background, skills, projects, education, or contact.\n\n"
-                    "I can also **remember** things for you:\n"
-                    "- “Store my DOB as 15/03/2003”\n"
-                    "- “Call me Alex”\n"
-                    "- “Always answer in short points”\n"
-                    "- “What is my date of birth?”"
                 ),
             }
         ]
