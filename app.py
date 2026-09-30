@@ -211,12 +211,12 @@ def sidebar():
             or os.getenv("DEEPSEEK_API_KEY", "")
             or os.getenv("OPENAI_API_KEY", "")
         )
-        api_key = st.text_input(
+        """api_key = st.text_input(
             cfg["key_label"] + " (optional)",
             type="password",
             help="Leave empty for retrieval-only mode. With a key, answers become more natural.",
             value=default_key,
-        )
+        )"""
         gemini_models = [
             "gemini-3.8-flash",
             "gemini-3.5-flash-lite",
