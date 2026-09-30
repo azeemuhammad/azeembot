@@ -5,9 +5,11 @@ Professional Streamlit interface with:
   - Persistent memory (DOB, name, facts, standing instructions)
   - Google Gemini (default) + DeepSeek / OpenAI support
   - Retrieval transparency
+  - API key never shown on chat screen (env/secrets only, password field not pre-filled)
 """
 
 import os
+import re
 import streamlit as st
 
 st.set_page_config(
@@ -80,8 +82,41 @@ st.markdown("""
         color: #0c4a6e;
         margin-bottom: 0.8rem;
     }
+    .key-ok {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+        padding: 0.45rem 0.65rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        margin: 0.35rem 0 0.6rem 0;
+    }
+    .key-missing {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        padding: 0.45rem 0.65rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        margin: 0.35rem 0 0.6rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+
+# Patterns that look like API keys — never display these in chat
+_API_KEY_RE = re.compile(
+    r"(?:AIza[0-9A-Za-z\-_]{20,}|sk-[0-9A-Za-z]{20,}|sk-or-v1-[0-9A-Za-z]{20,}|"
+    r"ya29\.[0-9A-Za-z\-_]{20,}|GOCSPX-[0-9A-Za-z\-_]{10,})",
+    re.IGNORECASE,
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Hide API-key-looking strings so they never appear on the chat screen."""
+    if not text:
+        return text
+    return _API_KEY_RE.sub("[API_KEY_HIDDEN]", text)
 
 
 @st.cache_resource(show_spinner="Loading AzeemBot knowledge base…")
@@ -103,11 +138,15 @@ def init_session():
                 "content": (
                     "Hey! I'm **AzeemBot** — Daniyal's personal assistant.\n\n"
                     "Ask me anything about his background, skills, projects, education, or contact.\n\n"
+                    "I can also **remember** things for you "
+                    "(e.g. “Store my DOB as 17/06/2005”)."
                 ),
             }
         ]
     if "show_sources" not in st.session_state:
         st.session_state.show_sources = False
+    if "api_key_override" not in st.session_state:
+        st.session_state.api_key_override = ""
 
 
 PROVIDER_OPTIONS = {
@@ -133,6 +172,36 @@ PROVIDER_OPTIONS = {
         "key_label": "OpenAI API Key",
     },
 }
+
+
+def _env_api_key(cfg: dict) -> str:
+    """Read key only from environment / Streamlit secrets — never from chat."""
+    # Streamlit Cloud secrets
+    try:
+        if hasattr(st, "secrets"):
+            for name in (
+                cfg["key_env"],
+                "GEMINI_API_KEY",
+                "GOOGLE_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "OPENAI_API_KEY",
+            ):
+                val = st.secrets.get(name) if name in st.secrets else None
+                if val:
+                    return str(val).strip()
+    except Exception:
+        pass
+    for name in (
+        cfg["key_env"],
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        val = os.getenv(name, "")
+        if val:
+            return val.strip()
+    return ""
 
 
 def sidebar():
@@ -175,7 +244,7 @@ def sidebar():
                     st.caption(f"• {i}")
 
         if not profile and not facts and not instructions:
-            st.caption("Nothing stored yet. Try: “remember my DOB is 15/03/2003”")
+            st.caption("Nothing stored yet. Try: “remember my DOB is 17/06/2005”")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -194,7 +263,7 @@ def sidebar():
 
         st.markdown("---")
 
-        # ---- LLM provider (Gemini default) ----
+        # ---- LLM provider (key NEVER shown on main chat screen) ----
         st.markdown("### 🔑 LLM Provider")
         provider_label = st.selectbox(
             "Provider",
@@ -204,19 +273,44 @@ def sidebar():
         )
         cfg = PROVIDER_OPTIONS[provider_label]
 
-        default_key = (
-            os.getenv(cfg["key_env"], "")
-            or os.getenv("GEMINI_API_KEY", "")
-            or os.getenv("GOOGLE_API_KEY", "")
-            or os.getenv("DEEPSEEK_API_KEY", "")
-            or os.getenv("OPENAI_API_KEY", "")
-        )
-        api_key = st.text_input(
-            cfg["key_label"] + " (optional)",
-            type="password",
-            help="Leave empty for retrieval-only mode. With a key, answers become more natural.",
-            value=default_key,
-        )
+        env_key = _env_api_key(cfg)
+
+        if env_key:
+            st.markdown(
+                '<div class="key-ok">✓ API key loaded from environment / secrets '
+                "(not shown on screen)</div>',
+                unsafe_allow_html=True,
+            )
+            api_key = env_key
+            # Optional override — empty by default, never pre-filled with real key
+            with st.expander("Override API key (optional)", expanded=False):
+                override = st.text_input(
+                    cfg["key_label"],
+                    type="password",
+                    value="",  # NEVER pre-fill the real key
+                    placeholder="Paste a different key only if needed",
+                    help="Leave blank to keep the environment key. Key is never shown in chat.",
+                    key="api_key_override_input",
+                )
+                if override and override.strip():
+                    api_key = override.strip()
+        else:
+            st.markdown(
+                '<div class="key-missing">No key in environment. '
+                "Enter below (password field — hidden) or set "
+                "<code>GEMINI_API_KEY</code>.</div>",
+                unsafe_allow_html=True,
+            )
+            api_key = st.text_input(
+                cfg["key_label"] + " (optional)",
+                type="password",
+                value="",  # NEVER pre-fill
+                placeholder="Paste key here — it will stay hidden",
+                help="Key stays in this password box only. It is never written to chat history.",
+                key="api_key_manual_input",
+            )
+            api_key = (api_key or "").strip()
+
         gemini_models = [
             "gemini-3.8-flash",
             "gemini-3.5-flash-lite",
@@ -239,6 +333,7 @@ def sidebar():
 
         st.markdown("---")
         st.caption("RAG · Memory · Gemini / FAISS · all-MiniLM-L6-v2")
+        st.caption("🔒 API key never appears on the chat screen")
         return api_key, base_url, model_name, cfg["provider"]
 
 
@@ -260,18 +355,18 @@ def main():
     st.markdown(
         '<div class="hint-box">'
         "💡 <b>Tip:</b> I can store info permanently. Try "
-        "“Store my DOB as 15/03/2003”, “Call me Boss”, or “Always reply in Urdu”. "
-        "Use a <b>Gemini API key</b> (sidebar) for natural answers — free at "
-        "<a href='https://aistudio.google.com/apikey' target='_blank'>Google AI Studio</a>."
+        "“Store my DOB as 17/06/2005”, “Call me Boss”, or “Always reply in Urdu”. "
+        "API key stays in the <b>sidebar only</b> — never on this chat screen."
         "</div>",
         unsafe_allow_html=True,
     )
 
     rag = load_rag()
 
+    # Render history — always redact any accidental key paste
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            st.markdown(redact_secrets(msg["content"]))
             if msg.get("sources") and st.session_state.show_sources:
                 with st.expander("Sources used"):
                     for s in msg["sources"]:
@@ -284,9 +379,11 @@ def main():
                         )
 
     if prompt := st.chat_input("Ask about Daniyal, or tell me something to remember…"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Redact before storing / displaying so key never lands in chat history
+        safe_prompt = redact_secrets(prompt)
+        st.session_state.messages.append({"role": "user", "content": safe_prompt})
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(safe_prompt)
 
         with st.chat_message("assistant"):
             with st.spinner("Thinking…"):
@@ -294,6 +391,7 @@ def main():
                     {"role": m["role"], "content": m["content"]}
                     for m in st.session_state.messages[:-1]
                 ]
+                # Use original prompt for memory/RAG logic (DOB etc.), but display is redacted
                 answer, retrieved = rag.generate(
                     query=prompt,
                     history=history_for_rag,
@@ -303,7 +401,8 @@ def main():
                     memory=mem,
                     provider=provider,
                 )
-                st.markdown(answer)
+                safe_answer = redact_secrets(answer)
+                st.markdown(safe_answer)
 
                 if st.session_state.show_sources and retrieved:
                     with st.expander("Sources used"):
@@ -319,7 +418,7 @@ def main():
         st.session_state.messages.append(
             {
                 "role": "assistant",
-                "content": answer,
+                "content": safe_answer,
                 "sources": retrieved if st.session_state.show_sources else None,
             }
         )
